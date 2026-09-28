@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="de">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0">
+
+    <title>JJazzLab Player</title>
+
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/MobileMenu.css">
+</head>
+
+<body>
+
+<div id="mobileMenu"></div>
+
+<div class="container">
+
+    <h1>JJazzLab Player 1.0</h1>
+
+	<div id="mainViewConatiner" >
+
+		<div id="soundFontStatus" class="soundfont-status">
+
+			<div id="soundFontStatusText">
+				Loading SoundFont ...
+			</div>
+
+			<div class="soundfont-progress-container">
+				<div
+					id="soundFontProgress"
+					class="soundfont-progress"
+					style="width: 0%">
+				</div>
+			</div>
+
+		</div>
+
+		<div id="songInfo">
+
+			Song: <strong id="songName">–</strong>
+
+			<label for="tempoInput" style="margin-left: 30px;">
+				BPM:
+			</label>
+
+			<input
+				type="number"
+				id="tempoInput"
+				min="20"
+				max="300"
+				step="1"
+				value="120"
+				style="width: 50px;">
+		
+	<label for="sizeInput" style="margin-left: 30px;">
+				Bars:
+			</label>
+
+			<input
+				type="number"
+				id="sizeInput"
+				min="1"
+				max="300"
+				step="1"
+				value=""
+				style="width: 50px;">
+		</div>
+
+		<div class="toolbar">
+
+			<input
+				type="file"
+				id="fileInput"
+				accept=".sng,.xml"
+				class="hidden">
+
+
+			<button id="playButton" disabled>
+				▶ Play
+			</button>
+
+			<button id="stopButton" disabled>
+				■ Stop
+			</button>
+
+		</div>
+
+		<div id="status" hidden>
+			Initialising...
+		</div>
+
+		<div id="songEditorContainer"></div>
+
+			<button id="rawXmlButton" class="hidden">
+				Raw XML
+			</button>
+
+		<div id="rawXmlContainer" class="hidden">
+
+			<textarea
+				id="rawXml"
+				spellcheck="false"
+				placeholder="Hier wird das XML des aktuellen Songs angezeigt..."></textarea>
+
+		</div>
+	</div>
+    <div id="aboutContainer" style="display: none;">
+<h2>An independent proof-of-concept</h2>
+
+<p>
+    <strong>JJazzLab Player is a private proof-of-concept exploring how
+    JJazzLab functionality could work in a web browser.</strong>
+</p>
+
+<p>
+    This is an <strong>independent, experimental project</strong> and is
+    not an official part of JJazzLab. It is intended to explore what might
+    be possible and perhaps serve as a starting point for further ideas
+    and development.
+</p>
+
+<p>
+    The project is currently <strong>very much a work in progress</strong>.
+    Features are incomplete, things may break, and the service can change
+    or disappear at any time.
+</p>
+
+<p>
+    <strong>This website is not intended for productive use.</strong>
+    Please do not rely on it for important work or data.
+</p>
+
+<p>
+    For the full and official JJazzLab experience, please visit the
+    <a href="https://www.jjazzlab.org/en/" target="_blank" rel="noopener noreferrer">
+        official JJazzLab website
+    </a>.
+</p>
+
+<h2>Disclaimer</h2>
+
+<p>
+    This is a private, non-commercial experiment provided
+    <strong>&ldquo;as is&rdquo; and &ldquo;as available&rdquo;</strong>,
+    without warranties of any kind. Use it at your own risk.
+    No guarantee is given for availability, correctness, functionality,
+    or preservation of your data.
+</p>
+
+<p>
+    <strong>This is a proof-of-concept, not a production service.</strong>
+</p>
+
+<p>
+    Thanks for checking it out!
+</p>
+
+
+		<div class="about-options">
+
+			<label>
+				<input type="checkbox" id="skipAbout">
+				Do not show this information again on the next startup
+			</label>
+
+		</div>
+
+        <button id="closeAbout">
+            Got it.
+        </button>
+	
+    </div>
+	
+	
+
+</div>
+
+<script type="module" src="./main.bundle.js"></script>
+
+</body>
+
+</html>

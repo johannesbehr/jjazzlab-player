@@ -1,0 +1,15 @@
+{
+  "name": "jjazzlab-player",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/main.js --bundle --sourcemap --minify --format=esm --platform=browser --outfile=main.bundle.js"
+  },
+  "dependencies": {
+    "spessasynth_lib": "^4.3.14"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}
