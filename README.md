@@ -45,9 +45,8 @@ The web client uses a SoundFont for MIDI playback.
 
 The current SoundFont is approximately **47–48 MB** and is converted to SF3 to reduce its size.
 
-Since the development server is running on my private PC with a relatively slow **16 Mbit DSL connection**, the SoundFont is cached locally in the browser after the first download.
-
-This means subsequent visits do not need to download the SoundFont again.
+The SoundFont is cached locally in the browser after the first download,
+this means subsequent visits do not need to download the SoundFont again.
 
 ## Technology
 
