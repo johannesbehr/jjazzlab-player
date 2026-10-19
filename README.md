@@ -2,6 +2,8 @@
 
 A proof-of-concept web application that brings parts of the [JJazzLab](https://www.jjazzlab.org/) toolkit to the browser.
 
+You can try it online here: [jjazzlab-player](https://wmager.ddns.net/jjazzlab/)
+
 The project combines a Java/Tomcat backend with a JavaScript-based web client. Songs are exchanged using XML compatible with the JJazzLab `.sng` format. The server processes the song using the JJazzLab toolkit and generates MIDI, which is then played directly in the browser.
 
 ## Features
@@ -12,7 +14,7 @@ The project combines a Java/Tomcat backend with a JavaScript-based web client. S
 - ☕ Java backend using the JJazzLab toolkit
 - 🌐 Tomcat servlet backend
 - 🎶 Server-side MIDI generation
-- 🔊 Client-side MIDI playback using Web Audio
+- 🔊 Client-side MIDI playback using the [spessa-synth](https://github.com/spessasus/spessasynth_lib)
 - 💾 Local SoundFont caching
 - 📦 SF3 SoundFont support
 - 🔎 Rhythm/style selection with autocomplete
@@ -92,10 +94,11 @@ Possible future improvements include:
 
 ## 🙏 Credits
 
-This project is based on the excellent work of the [JJazzLab](https://www.jjazzlab.org/) project and its contributors.
+This project is based on the excellent work of the [JJazzLab](https://www.jjazzlab.org/) project and its contributors and on the pretty cool synth library spessa-synth. 
 
 - [JJazzLab GitHub](https://github.com/jjazzboss/JJazzLab)
 - [JJazzLab Website](https://www.jjazzlab.org/)
+- [spessa-synth](https://github.com/spessasus/spessasynth_lib)
 
 ---
 
