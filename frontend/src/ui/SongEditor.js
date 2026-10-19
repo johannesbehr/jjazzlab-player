@@ -1,227 +1,281 @@
+import { ChordTypeDatabase } from "../harmony/ChordTypeDatabase.js";
+import { messageDefinition } from "../messageDefinition.js";
+
 export class SongEditor {
 
-    constructor(container) {
+    constructor(ui) {
 
-        this.container =
-            container;
-
-        this.onChanged =
-            null;
-
-        this.onAdd =
-            null;
+        this.ui = ui;
+        this.container = ui.songEditorContainer;
+        this.tempoInput = ui.tempoInput;
+        this.sizeInput = ui.sizeInput;
+        this.songName = ui.songName;
+        this.focusAfterRefresh = null;
+        this.song = null;
+        this.readOnlySongFields = null;
 
         /*
          * Rhythmus-Styles vom Server
          */
-
         this.rhythms = [];
+        this.rhythmUrl = "/java/jjazzlab/api/rhythm";
 
-        this.rhythmUrl =
-            "/java/jjazzlab/api/rhythm";
     }
 
+    setSong(song) {
+        this.song = song;
+    }
 
-    /*
-     * Initialisierung
-     */
+    refresh() {
+        this.setTimeline(this.song.getTimeline());
+        this.songName.value = this.song.getName();
+        this.sizeInput.value = this.song.getSongSize();
+        this.tempoInput.value = this.song.getTempo();
+
+    }
+
+    focusChordAfterRefresh(position) {
+        this.focusAfterRefresh = position;
+    }
 
     async initialize() {
 
+        await ChordTypeDatabase.initialize();
         await this.loadRhythms();
+
+        this.songName.addEventListener("change", () => {
+            this.setSongName(this.songName.value);
+        });
+        this.tempoInput.addEventListener("change", () => {
+            this.setTempo(Number(this.tempoInput.value));
+        });
+        this.sizeInput.addEventListener("change", () => {
+            this.setSize(Number(this.sizeInput.value));
+        });
+
     }
 
+    setTempo(tempo) {
+        this.song.setTempo(tempo);
+    }
 
-    /*
-     * Timeline darstellen
-     */
+    setSize(size) {
+        // ToDo: Validate that size is not less than bars in song
+        this.song.setSongSize(size);
+    }
+
+    setSongName(name) {
+        this.song.setName(name);
+    }
+
     setTimeline(timeline) {
+
+        console.log("setTimeline...");
 
         this.container.innerHTML = "";
 
         let currentRow = null;
+
+        this.readOnlySongFields = {};
+
+        // Dict for all refernced input fields
+        const baseCordFields = {};
+
+        let rowIsReadonly = false;
+        let currentChordLeadCheatBar = undefined;
 
         for (const item of timeline) {
 
             /*
              * Neuer SongPart = neuer Abschnitt
              */
-
             if (item.type === "songPart") {
 
-                currentRow =
-                    this.createSongPartRow(
-                        item
-                    );
+                if (currentRow && !rowIsReadonly) {
+                    this.addInputFieldToSongPartRow(currentRow, currentChordLeadCheatBar+1);
+                }
 
-                this.container.appendChild(
-                    currentRow
-                );
-
+                rowIsReadonly = false;
+                
+                currentRow = this.createSongPartRow(item);
+                this.container.appendChild(currentRow);
                 continue;
             }
 
             /*
              * Chord zum aktuellen Abschnitt
              */
-
-            if (
-                item.type === "chord" &&
-                currentRow
-            ) {
-
-                this.addChordToRow(
-                    currentRow,
-                    item
-                );
+            if (item.type === "chord" && currentRow) {
+                if (item.readonly) rowIsReadonly = true;
+                currentChordLeadCheatBar = item.chordBar;
+                this.addChordToRow(currentRow, item, baseCordFields);
             }
         }
-        
-          /*
-     * Eingabefeld für neuen Chord
-     */
 
-    this.renderNewChord(
-        timeline
-    );
-}
-    
-    addChordToRow(row, chord) {
+        /*
+         * Eingabefeld für neuen Chord
+         */
+        this.renderNewChord(timeline);
+
+        if (this.focusAfterRefresh !== null) {
+
+            console.log("Setting Focus to: " + this.focusAfterRefresh);
+
+            const position = this.focusAfterRefresh;
+            this.focusAfterRefresh = null;
+
+            const inputs = Array.from(this.container.querySelectorAll(".chord-input"));
+
+            if (position >= 0 &&
+                position < inputs.length) {
+
+                inputs[position].focus();
+                inputs[position].select();
+            }
+        }
+    }
+
+    addInputFieldToSongPartRow(row, bar) {
+        const newInputContainer = document.createElement("div");
+        newInputContainer.className = "chord-bar";
+        //newInputContainer.dataset.bar = chord.bar;
+
+        const label = document.createElement("span");
+        label.className = "chord-bar-label";
+        label.textContent = `|`;
+        newInputContainer.appendChild(label);
+
+        const inputFieldContainer = this.createNewInputField(bar);
+
+        newInputContainer.appendChild(inputFieldContainer);
+        row.chordRow.appendChild(newInputContainer);
+    }
+
+    createNewInputField(bar) {
+
+        const chordContainer = document.createElement("div");
+        chordContainer.className = "chord-container";
+
+        /*
+         * Chord-Eingabe
+         */
+        const input = document.createElement("input");
+
+        input.type = "text";
+        input.value = "";
+        input.className = "chord-input";
+
+        /*
+         * Daten am Element speichern
+         */
+        input.dataset.bar = bar;
+        //        input.dataset.songBar = chord.bar;
+        //        input.dataset.position = chord.position;
+
+        input.addEventListener("change", () => {
+            // Handle changeChord local!
+            const change = {
+                type: "insertElement", bar: Number(input.dataset.bar), name: input.value, field: input
+            }
+            this.onInsertElement(change);
+        });
+
+        chordContainer.appendChild(input);
+
+        return chordContainer;
+    }
+
+    onInsertElement(change) {
+        // Name can be sp or a chord
+        const name = change.name.trim();
+        if(name != ""){
+            const bar = change.bar;        
+            this.song.insertElement(bar, name);
+            this.refresh();
+        }
+    }
+
+    addChordToRow(row, chord, baseCordFields, rowBarContainer) {
 
         /*
          * Prüfen, ob für diesen Takt bereits
          * ein Takt-Label existiert.
          */
 
-        let barContainer =
-            row.chordRow.querySelector(
-                `[data-bar="${chord.bar}"]`
-            );
-
+        let barContainer = row.chordRow.querySelector(`[data-chord-bar="${chord.chordBar}"]`);
+        //let barContainer = rowBarContainer[chord.bar];
+        
         if (!barContainer) {
 
-            barContainer =
-                document.createElement("div");
+            barContainer = document.createElement("div");
+            barContainer.className = "chord-bar";
+            barContainer.dataset.bar = chord.bar;
+            barContainer.dataset.chordBar = chord.chordBar;
 
-            barContainer.className =
-                "chord-bar";
+            const label = document.createElement("span");
 
-            barContainer.dataset.bar =
-                chord.bar;
+            label.className = "chord-bar-label";
 
+            label.textContent = `|${chord.bar + 1}:`;
 
-            const label =
-                document.createElement("span");
+            barContainer.appendChild(label);
 
-            label.className =
-                "chord-bar-label";
-
-            label.textContent =
-                `|${chord.bar + 1}:`;
-
-            barContainer.appendChild(
-                label
-            );
-
-            row.chordRow.appendChild(
-                barContainer
-            );
+            row.chordRow.appendChild(barContainer);
         }
-
 
         /*
          * Akkord hinzufügen
          */
+        const chordContainer = this.createChord(chord, baseCordFields);
 
-        const chordContainer =
-            this.createChord(
-                chord
-            );
-
-        barContainer.appendChild(
-            chordContainer
-        );
+        barContainer.appendChild(chordContainer);
     }
-    
+
     createSongPartRow(songPart) {
 
-        const row =
-            document.createElement("div");
+        const row = document.createElement("div");
 
-        row.className =
-            "song-editor-row";
-
+        row.className = "song-editor-row";
 
         /*
          * SongPart-Zeile
          */
 
-        const songPartElement =
-            this.createSongPart(
-                songPart
-            );
+        const songPartElement = this.createSongPart(songPart);
 
-        row.appendChild(
-            songPartElement
-        );
-
+        row.appendChild(songPartElement);
 
         /*
          * Takt-/Chord-Zeile
          */
 
-        const chordRow =
-            document.createElement("div");
+        const chordRow = document.createElement("div");
 
-        chordRow.className =
-            "song-editor-chords";
+        chordRow.className = "song-editor-chords";
 
-        row.appendChild(
-            chordRow
-        );
-
+        row.appendChild(chordRow);
 
         /*
          * Referenz für addChordToRow()
          */
 
-        row.chordRow =
-            chordRow;
+        row.chordRow = chordRow;
 
         return row;
     }
 
-    /*
-     * Einen Takt darstellen
-     */
+    renderBar(bar, items, baseCordFields) {
 
-    renderBar(bar, items) {
-
-        const barContainer =
-            document.createElement("div");
-
-        barContainer.className =
-            "chord-bar";
-
+        const barContainer = document.createElement("div");
+        barContainer.className = "chord-bar";
 
         /*
          * Takt-Nummer
          */
-
-        const label =
-            document.createElement("span");
-
-        label.className =
-            "chord-bar-label";
-
-        label.textContent =
-            `${bar + 1}:`;
-
-
-        barContainer.appendChild(
-            label
-        );
-
+        const label = document.createElement("span");
+        label.className = "chord-bar-label";
+        label.textContent = `${bar + 1}:`;
+        barContainer.appendChild(label);
 
         /*
          * SongParts
@@ -229,484 +283,219 @@ export class SongEditor {
          * Normalerweise gibt es hier
          * höchstens einen SongPart.
          */
-
         for (const item of items) {
 
             if (item.type !== "songPart") {
                 continue;
             }
 
-            const songPart =
-                this.createSongPart(
-                    item
-                );
-
-            barContainer.appendChild(
-                songPart
-            );
+            const songPart = this.createSongPart(item);
+            barContainer.appendChild(songPart);
         }
-
 
         /*
          * Chords
          */
-
         for (const item of items) {
-
             if (item.type !== "chord") {
                 continue;
             }
 
-            const chord =
-                this.createChord(
-                    item
-                );
-
-            barContainer.appendChild(
-                chord
-            );
+            const chord = this.createChord(item, baseCordFields);
+            barContainer.appendChild(chord);
         }
 
-
-        this.container.appendChild(
-            barContainer
-        );
+        this.container.appendChild(barContainer);
     }
 
-
-    /*
-     * SongPart erzeugen
-     */
-/*
     createSongPart(songPart) {
 
-        const element =
-            document.createElement("div");
+        const element = document.createElement("div");
+        element.className = "song-part";
 
-        element.className =
-            "song-part";
+        /*
+         * Gemeinsamer Change-Handler
+         */
+        const emitChange = () => {
 
-
-        //Name
-        const nameInput =
-            document.createElement("input");
-
-        nameInput.type =
-            "text";
-
-        nameInput.value =
-            songPart.name || "";
-
-        nameInput.className =
-            "song-part-name";
-
-
-        //Bereich
-        const range =
-            document.createElement("span");
-
-        range.className =
-            "song-part-range";
-
-        range.textContent =
-            `Takt ${songPart.bar + 1}–${
-                songPart.bar +
-                songPart.numberOfBars
-            }`;
-
-
-        //Rhythmus
-        const rhythmInput =
-            this.createRhythmInput(
-                songPart.rhythmName
-            );
-
-
-        // Variation
-
-        const variationInput =
-            document.createElement("input");
-
-        variationInput.type =
-            "text";
-
-        variationInput.value =
-            songPart.variation || "";
-
-        variationInput.className =
-            "song-part-variation";
-
-
-        // Zusammensetzen
-        element.appendChild(
-            nameInput
-        );
-
-        //element.appendChild(
-        //    range
-        //);
-
-        element.appendChild(
-            rhythmInput.container
-        );
-
-        element.appendChild(
-            variationInput
-        );
-
-
-        //Änderung melden
-        const fireChange =
-            () => {
-
-                if (!this.onChanged) {
-                    return;
-                }
-
-
-                this.onChanged({
-
-                    type:
-                        "songPart",
-
-                    songPart:
-                        songPart,
-
-                    name:
-                        nameInput.value,
-
-                    rhythmName:
-                        rhythmInput.input.value,
-
-                    variation:
-                        variationInput.value
-                });
-            };
-
-
-        nameInput.addEventListener(
-            "change",
-            fireChange
-        );
-
-
-        rhythmInput.input.addEventListener(
-            "change",
-            fireChange
-        );
-
-
-        variationInput.addEventListener(
-            "change",
-            fireChange
-        );
-
-
-        return element;
-    }
-*/
-createSongPart(songPart) {
-
-    const element =
-        document.createElement("div");
-
-    element.className =
-        "song-part";
-
-
-    /*
-     * Gemeinsamer Change-Handler
-     */
-
-    const emitChange =
-        () => {
-
-            if (!this.onChanged) {
-                return;
+            const change = {
+                type: "songPart", songPart: songPart, name: nameInput.value, rhythmName: rhythmInput.dataset.rhythmName || "", rhythmId: rhythmInput.dataset.rhythmId || "", variation: variationSelect.value, timeSignature: rhythmInput.dataset.timeSignature || ""
             }
-
-            this.onChanged({
-
-                type:
-                    "songPart",
-
-                songPart:
-                    songPart,
-
-                name:
-                    nameInput.value,
-
-                rhythmName:
-                    rhythmInput.value,
-
-                rhythmId:
-                    rhythmInput.dataset.rhythmId || "",
-
-                variation:
-                    variationSelect.value
-            });
+            this.changeSongPart(change);
         };
 
+        /*
+         * SongPart-Name
+         */
+        const nameInput = document.createElement("input");
 
-    /*
-     * SongPart-Name
-     */
+        nameInput.type = "text";
 
-    const nameInput =
-        document.createElement("input");
+        nameInput.value = songPart.name || "";
 
-    nameInput.type =
-        "text";
+        nameInput.className = "song-part-name";
 
-    nameInput.value =
-        songPart.name || "";
+        nameInput.addEventListener("change", emitChange);
 
-    nameInput.className =
-        "song-part-name";
+        element.appendChild(nameInput);
 
-    nameInput.addEventListener(
-        "change",
-        emitChange
-    );
+        /*
+         * Rhythmus-Autocomplete
+         */
 
-    element.appendChild(
-        nameInput
-    );
+        const rhythmAutocomplete = document.createElement("div");
 
+        rhythmAutocomplete.className = "rhythm-autocomplete";
 
-    /*
-     * Rhythmus-Autocomplete
-     */
+        const rhythmInput = document.createElement("input");
 
-    const rhythmAutocomplete =
-        document.createElement("div");
+        rhythmInput.type = "text";
 
-    rhythmAutocomplete.className =
-        "rhythm-autocomplete";
+        const rhythm = this.rhythms.find(item => item.id.toLowerCase() === songPart.rhythmId.toLowerCase());
 
+        if (rhythm) {
+            rhythmInput.value = rhythm.label;
+        } else {
+            rhythmInput.value = songPart.rhythmName || "";
+        }
 
-    const rhythmInput =
-        document.createElement("input");
+        rhythmInput.className = "song-part-rhythm";
 
-    rhythmInput.type =
-        "text";
+        rhythmInput.autocomplete = "off";
 
-    rhythmInput.value =
-        songPart.rhythmName || "";
+        rhythmInput.dataset.rhythmId = songPart.rhythmId || "";
 
-    rhythmInput.className =
-        "song-part-rhythm";
+        rhythmInput.dataset.rhythmName = songPart.rhythmName || "";
 
-    rhythmInput.autocomplete =
-        "off";
+        rhythmInput.dataset.timeSignature = songPart.timeSignature || "";
 
-    rhythmInput.dataset.rhythmId =
-        songPart.rhythmId || "";
+        const suggestions = document.createElement("div");
 
+        suggestions.className = "rhythm-suggestions";
 
-    const suggestions =
-        document.createElement("div");
+        suggestions.style.display = "none";
 
-    suggestions.className =
-        "rhythm-suggestions";
+        rhythmAutocomplete.appendChild(rhythmInput);
 
-    suggestions.style.display =
-        "none";
+        rhythmAutocomplete.appendChild(suggestions);
 
+        element.appendChild(rhythmAutocomplete);
 
-    rhythmAutocomplete.appendChild(
-        rhythmInput
-    );
+        /*
+         * Variation
+         */
 
-    rhythmAutocomplete.appendChild(
-        suggestions
-    );
+        const variationSelect = document.createElement("select");
 
-    element.appendChild(
-        rhythmAutocomplete
-    );
+        variationSelect.className = "song-part-variation";
 
+        variationSelect.disabled = true;
 
-    /*
-     * Variation
-     */
+        element.appendChild(variationSelect);
 
-    const variationSelect =
-        document.createElement("select");
+        /*
+         * Rhythmus auswählen
+         */
 
-    variationSelect.className =
-        "song-part-variation";
+        const selectRhythm = async rhythm => {
 
-    variationSelect.disabled =
-        true;
+            rhythmInput.value = rhythm.label;
+            rhythmInput.dataset.rhythmId = rhythm.id;
+            rhythmInput.dataset.rhythmName = rhythm.value;
+            rhythmInput.dataset.timeSignature = rhythm.timeSignature;
 
-    element.appendChild(
-        variationSelect
-    );
+            suggestions.innerHTML = "";
 
-
-    /*
-     * Rhythmus auswählen
-     */
-
-    const selectRhythm =
-        async rhythm => {
-
-            rhythmInput.value =
-                rhythm.label;
-
-            rhythmInput.dataset.rhythmId =
-                rhythm.id;
-
-            suggestions.innerHTML =
-                "";
-
-            suggestions.style.display =
-                "none";
-
+            suggestions.style.display = "none";
 
             /*
              * Variationen des neuen Rhythmus laden
              */
 
-            await this.loadVariations(
-                rhythm.id,
-                variationSelect,
-                songPart.variation || ""
-            );
-
+            await this.loadVariations(rhythm.id, variationSelect, songPart.variation || "");
 
             /*
              * Aktuellen Rhythmus im lokalen
              * SongPart-Objekt aktualisieren.
              */
-
-            songPart.rhythmName =
-                rhythm.label;
-
-            songPart.rhythmId =
-                rhythm.id;
-
-            songPart.variation =
-                variationSelect.value;
-
+            songPart.rhythmName = rhythm.label;
+            songPart.rhythmId = rhythm.id;
+            songPart.timeSignature = rhythm.timeSignature;
+            songPart.variation = variationSelect.value;
 
             emitChange();
         };
 
+        /*
+         * Autocomplete
+         */
 
-    /*
-     * Autocomplete
-     */
+        rhythmInput.addEventListener("input", () => {
 
-    rhythmInput.addEventListener(
-        "input",
-        () => {
+            const search = rhythmInput.value
+                .trim()
+                .toLowerCase();
 
-            const search =
-                rhythmInput.value
-                    .trim()
-                    .toLowerCase();
-
-            suggestions.innerHTML =
-                "";
+            suggestions.innerHTML = "";
 
             if (!search) {
 
-                suggestions.style.display =
-                    "none";
+                suggestions.style.display = "none";
 
                 return;
             }
 
+            const matches = this.rhythms.filter(rhythm =>
+                    rhythm.label
+                    .toLowerCase()
+                    .includes(search));
 
-            const matches =
-                this.rhythms.filter(
-                    rhythm =>
-                        rhythm.label
-                            .toLowerCase()
-                            .includes(search)
-                );
+            if (matches.length === 0) {
 
-
-            if (
-                matches.length === 0
-            ) {
-
-                suggestions.style.display =
-                    "none";
+                suggestions.style.display = "none";
 
                 return;
             }
 
+            for (const rhythm
+                of matches) {
 
-            for (
-                const rhythm
-                of matches
-            ) {
+                const item = document.createElement("div");
 
-                const item =
-                    document.createElement(
-                        "div"
-                    );
+                item.className = "rhythm-suggestion";
 
-                item.className =
-                    "rhythm-suggestion";
+                item.textContent = rhythm.label;
 
-                item.textContent =
-                    rhythm.label;
+                item.addEventListener("mousedown", event => {
 
+                    event.preventDefault();
 
-                item.addEventListener(
-                    "mousedown",
-                    event => {
+                    selectRhythm(rhythm);
+                });
 
-                        event.preventDefault();
-
-                        selectRhythm(
-                            rhythm
-                        );
-                    }
-                );
-
-                suggestions.appendChild(
-                    item
-                );
+                suggestions.appendChild(item);
             }
 
+            suggestions.style.display = "block";
+        });
 
-            suggestions.style.display =
-                "block";
-        }
-    );
+        /*
+         * Rhythmus-Feld verlassen.
+         *
+         * Prüfen, ob der eingegebene Name
+         * zu einem bekannten Rhythmus gehört.
+         */
 
+        rhythmInput.addEventListener("change", async() => {
 
-    /*
-     * Rhythmus-Feld verlassen.
-     *
-     * Prüfen, ob der eingegebene Name
-     * zu einem bekannten Rhythmus gehört.
-     */
+            const value = rhythmInput.value
+                .trim();
 
-    rhythmInput.addEventListener(
-        "change",
-        async () => {
-
-            const value =
-                rhythmInput.value
-                    .trim();
-
-            const rhythm =
-                this.rhythms.find(
-                    item =>
-                        item.label === value
-                );
+            const rhythm = this.rhythms.find(item => item.label.toLowerCase() === value.toLowerCase());
 
             if (rhythm) {
 
-                await selectRhythm(
-                    rhythm
-                );
+                await selectRhythm(rhythm);
 
             } else {
 
@@ -714,392 +503,310 @@ createSongPart(songPart) {
                  * Kein gültiger Rhythmus.
                  */
 
-                rhythmInput.dataset.rhythmId =
-                    "";
+                rhythmInput.dataset.rhythmId = "";
 
                 emitChange();
             }
-        }
-    );
+        });
 
+        /*
+         * Variation geändert
+         */
 
-    /*
-     * Variation geändert
-     */
+        variationSelect.addEventListener("change", () => {
 
-    variationSelect.addEventListener(
-        "change",
-        () => {
-
-            songPart.variation =
-                variationSelect.value;
+            songPart.variation = variationSelect.value;
 
             emitChange();
+        });
+
+        /*
+         * Bereits vorhandene Variationen laden.
+         */
+
+        if (songPart.rhythmId) {
+
+            this.loadVariations(songPart.rhythmId, variationSelect, songPart.variation || "");
         }
-    );
 
-
-    /*
-     * Bereits vorhandene Variationen laden.
-     */
-
-    if (
-        songPart.rhythmId
-    ) {
-
-        this.loadVariations(
-            songPart.rhythmId,
-            variationSelect,
-            songPart.variation || ""
-        );
+        return element;
     }
 
-    return element;
-}
+    createChord(chord, baseCordFields) {
 
-    /*
-     * Chord erzeugen
-     */
-
-    createChord(chord) {
-
-        const chordContainer =
-            document.createElement("div");
-
-        chordContainer.className =
-            "chord-container";
-
+        const chordContainer = document.createElement("div");
+        chordContainer.className = "chord-container";
 
         /*
          * Position / Beat
          */
-
-        const beat =
-            document.createElement("span");
-
-        beat.className =
-            "chord-beat";
-
-        beat.textContent =
-            chord.position + 1;
-
+        const beat = document.createElement("span");
+        beat.className = "chord-beat";
+        beat.textContent = chord.position + 1;
 
         /*
          * Chord-Eingabe
          */
+        const input = document.createElement("input");
 
-        const input =
-            document.createElement("input");
-
-        input.type =
-            "text";
-
-        input.value =
-            chord.name || "";
-
-        input.className =
-            "chord-input";
-
+        input.type = "text";
+        input.value = chord.name || "";
+        input.className = "chord-input";
 
         /*
          * Daten am Element speichern
          */
+        input.dataset.bar = chord.chordBar;
+        input.dataset.songBar = chord.bar;
+        input.dataset.position = chord.position;
+        input.dataset.otherFields = "";
 
-        input.dataset.bar =
-            chord.bar;
+        const cordSongPos = chord.bar + ":" + chord.position;
+        const cordLeadSheetPos = chord.chordBar + ":" + chord.position;
 
-        input.dataset.position =
-            chord.position;
+        if (chord.readonly) {
 
+            // Search base input and link
+            const baseInput = baseCordFields[cordLeadSheetPos];
+            if (baseInput) {
+                if (baseInput.dataset.otherFields != "")
+                    baseInput.dataset.otherFields += ";"
+                    baseInput.dataset.otherFields += cordSongPos;
+            }
+            input.readOnly = true;
+            input.classList.add("readonly");
+            this.readOnlySongFields[cordSongPos] = input;
+        } else {
+            // Add to base inputs
+            baseCordFields[cordLeadSheetPos] = input;
+        }
 
-        chordContainer.appendChild(
-            beat
-        );
+        chordContainer.appendChild(beat);
 
-        chordContainer.appendChild(
-            input
-        );
-
+        chordContainer.appendChild(input);
 
         /*
          * Änderung melden
          */
 
-        input.addEventListener(
-            "change",
-            () => {
+        let changeHandledByEnter = false;
 
-                if (!this.onChanged) {
-                    return;
+        input.addEventListener("change", () => {
+
+            /*
+             * Wenn Enter die Änderung bereits
+             * verarbeitet hat, nichts mehr tun.
+             */
+
+            if (changeHandledByEnter) {
+                changeHandledByEnter = false;
+                return;
+            }
+
+            // Handle changeChord local!
+            const change = {
+                type: "chord", bar: Number(input.dataset.bar), position: Number(input.dataset.position), name: input.value, field: input
+            }
+
+            this.changeChord(change);
+
+            /*
+            console.log("OnChange/change");
+
+            this.onChanged({
+
+            type:
+            "chord", 
+            bar:
+            Number( input.dataset.bar
+            ), 
+            position:
+            Number( input.dataset.position
+            ), 
+            name:
+            input.value
+            });*/
+        });
+
+        /*
+         * Enter = Änderung übernehmen und
+         * zum nächsten Chord springen
+         */
+
+        input.addEventListener("keydown", event => {
+
+            if (event.key !== "Enter") {
+                return;
+            }
+
+            event.preventDefault();
+
+            /*
+             * Alle Chord-Eingabefelder ermitteln.
+             */
+
+            const inputs = Array.from(this.container.querySelectorAll(".chord-input"));
+
+            const index = inputs.indexOf(input);
+
+            /*
+             * Nächstes vorhandenes Eingabefeld
+             */
+
+            if (index >= 0 &&
+                index < inputs.length - 1) {
+
+                let position = index + 1;
+                if (position < inputs.length) {
+                    inputs[position].focus();
+                    inputs[position].select();
                 }
 
+                //this.focusAfterRefresh = index + 1;
+                //console.log( "focusAfterRefresh:", this.focusAfterRefresh);
+
+                return;
+            }
+
+            /*
+             * Änderung über Enter verarbeiten.
+             */
+
+            if (this.onChanged) {
+
+                changeHandledByEnter = true;
+
+                console.log("OnChange/Enter");
 
                 this.onChanged({
 
                     type:
-                        "chord",
-
+                    "chord", 
                     bar:
-                        Number(
-                            input.dataset.bar
-                        ),
-
+                    Number(input.dataset.bar), 
                     position:
-                        Number(
-                            input.dataset.position
-                        ),
-
+                    Number(input.dataset.position), 
                     name:
-                        input.value
+                    input.value
                 });
             }
-        );
 
+            /*
+             * Letzter vorhandener Chord:
+             * neuen Chord hinzufügen.
+             */
+
+            const name = input.value.trim();
+
+            if (!name) {
+                return;
+            }
+
+            this.addElement(name);
+        });
 
         return chordContainer;
     }
 
-
     /*
      * Eingabe für neuen Chord
      */
-
     renderNewChord(timeline) {
-
         let lastBar = 0;
-
-
         if (timeline.length > 0) {
-
-            lastBar =
-                Math.max(
-                    ...timeline.map(
-                        item => item.bar
-                    )
-                );
+            lastBar = Math.max(...timeline.map(item => item.bar));
         }
-
-
-        const newBar =
-            document.createElement("div");
-
-        newBar.className =
-            "chord-bar";
-
-
-        const label =
-            document.createElement("span");
-
-        label.className =
-            "chord-bar-label";
-
-        label.textContent =
-            `${lastBar + 2}:`;
-
-
-        newBar.appendChild(
-            label
-        );
-
-
-        const input =
-            document.createElement("input");
-
-        input.type =
-            "text";
-
-        input.value =
-            "";
-
-        input.className =
-            "chord-input chord-new-input";
-
-
-        newBar.appendChild(
-            input
-        );
-
-
-        this.container.appendChild(
-            newBar
-        );
-
+        const newBar = document.createElement("div");
+        newBar.className = "chord-bar";
+        const label = document.createElement("span");
+        label.className = "chord-bar-label";
+        label.textContent = `${lastBar + 2}:`;
+        newBar.appendChild(label);
+        const input = document.createElement("input");
+        input.type = "text";
+        input.value = "";
+        input.className = "chord-input chord-new-input";
+        newBar.appendChild(input);
+        this.container.appendChild(newBar);
 
         /*
          * Neuen Chord hinzufügen
          */
-
-        input.addEventListener(
-            "change",
-            () => {
-
-                const name =
-                    input.value.trim();
-
-                if (!name) {
-                    return;
-                }
-
-
-                if (this.onAdd) {
-                    this.onAdd(name);
-                }
+        input.addEventListener("change", () => {
+            const name = input.value.trim();
+            if (!name) {
+                return;
             }
-        );
+            this.addElement(name);
+        });
     }
-
 
     /*
      * Rhythmus-Styles laden
      */
 
     async loadRhythms() {
-
         try {
-
-            const response =
-                await fetch(
-                    this.rhythmUrl
-                );
-
-
+            const response = await fetch(this.rhythmUrl);
             if (!response.ok) {
-
-                throw new Error(
-                    `HTTP ${response.status}`
-                );
+                throw new Error(`HTTP ${response.status}`);
             }
-
-
-            this.rhythms =
-                await response.json();
-
-
-            console.log(
-                `Rhythms geladen: ${this.rhythms.length}`
-            );
-
-        }
-
-        catch (error) {
-
-            console.error(
-                "Rhythms konnten nicht geladen werden:",
-                error
-            );
-
+            this.rhythms = await response.json();
+            console.log(`Rhythms geladen: ${this.rhythms.length}`);
+        } catch (error) {
+            console.error("Rhythms konnten nicht geladen werden:", error);
             this.rhythms = [];
         }
     }
 
-    async loadVariations(
-        rhythmId,
-        select,
-        selectedVariation = ""
-    ) {
-
+    async loadVariations(rhythmId, select, selectedVariation = "") {
         select.innerHTML = "";
-
         if (!rhythmId) {
-
             select.disabled = true;
-
             return;
         }
 
-
         try {
-
-            const response =
-                await fetch(
-                    `${this.rhythmUrl}/${encodeURIComponent(rhythmId)}/variations`
-                );
-
+            const response = await fetch(`${this.rhythmUrl}/${encodeURIComponent(rhythmId)}/variations`);
             if (!response.ok) {
-
-                throw new Error(
-                    `HTTP ${response.status}`
-                );
+                throw new Error(`HTTP ${response.status}`);
             }
-
-            const variations =
-                await response.json();
-
+            const variations = await response.json();
 
             /*
              * Keine Variationen vorhanden
              */
 
-            if (
-                !Array.isArray(variations) ||
-                variations.length === 0
-            ) {
-
+            if (!Array.isArray(variations) || variations.length === 0) {
                 select.disabled = true;
-
                 return;
             }
-
 
             /*
              * Optionen erzeugen
              */
-
-            for (
-                const variation
-                of variations
-            ) {
-
-                const option =
-                    document.createElement(
-                        "option"
-                    );
-
-                option.value =
-                    variation;
-
-                option.textContent =
-                    variation;
-
-                select.appendChild(
-                    option
-                );
+            for (const variation of variations) {
+                const option = document.createElement("option");
+                option.value = variation;
+                option.textContent = variation;
+                select.appendChild(option);
             }
-
 
             /*
              * Bisherige Variation
              * beibehalten, wenn vorhanden.
              */
-
-            if (
-                variations.includes(
-                    selectedVariation
-                )
-            ) {
-
-                select.value =
-                    selectedVariation;
-
+            if (variations.includes(selectedVariation)) {
+                select.value = selectedVariation;
             } else {
-
                 /*
                  * Sonst erste Variation wählen.
                  */
-
-                select.value =
-                    variations[0];
+                select.value = variations[0];
             }
-
             select.disabled = false;
-
         } catch (error) {
-
-            console.error(
-                "SongEditor: Variationen konnten nicht geladen werden:",
-                error
-            );
-
+            console.error("SongEditor: Variationen konnten nicht geladen werden:", error);
             select.disabled = true;
         }
     }
@@ -1109,208 +816,208 @@ createSongPart(songPart) {
      */
 
     createRhythmInput(value) {
-
-        const container =
-            document.createElement("div");
-
-        container.className =
-            "rhythm-autocomplete";
-
-
-        const input =
-            document.createElement("input");
-
-        input.type =
-            "text";
-
-        input.value =
-            value || "";
-
-        input.className =
-            "song-part-rhythm";
-
-        input.autocomplete =
-            "off";
-
-
-        const suggestions =
-            document.createElement("div");
-
-        suggestions.className =
-            "rhythm-suggestions";
-
-        suggestions.style.display =
-            "none";
-
-
-        container.appendChild(
-            input
-        );
-
-        container.appendChild(
-            suggestions
-        );
-
+        const container = document.createElement("div");
+        container.className = "rhythm-autocomplete";
+        const input = document.createElement("input");
+        input.type = "text";
+        input.value = value || "";
+        input.className = "song-part-rhythm";
+        input.autocomplete = "off";
+        const suggestions = document.createElement("div");
+        suggestions.className = "rhythm-suggestions";
+        suggestions.style.display = "none";
+        container.appendChild(input);
+        container.appendChild(suggestions);
 
         /*
          * Vorschläge aktualisieren
          */
 
-        const updateSuggestions =
-            () => {
-
-                const search =
-                    input.value
-                        .trim()
-                        .toLowerCase();
-
-
-                suggestions.innerHTML =
-                    "";
-
-
-                if (!search) {
-
-                    suggestions.style.display =
-                        "none";
-
-                    return;
-                }
-
-
-                const matches =
-                    this.rhythms
-                        .filter(
-                            rhythm =>
-                                rhythm.label
-                                    .toLowerCase()
-                                    .includes(search)
-                        )
-                        .slice(
-                            0,
-                            30
-                        );
-
-
-                if (matches.length === 0) {
-
-                    suggestions.style.display =
-                        "none";
-
-                    return;
-                }
-
-
-                for (const rhythm of matches) {
-
-                    const item =
-                        document.createElement("div");
-
-                    item.className =
-                        "rhythm-suggestion";
-
-                    item.textContent =
-                        rhythm.label;
-
-
-                    item.addEventListener(
-                        "mousedown",
-                        event => {
-
-                            event.preventDefault();
-
-
-                            input.value =
-                                rhythm.value;
-
-
-                            suggestions.style.display =
-                                "none";
-
-
-                            input.dispatchEvent(
-                                new Event(
-                                    "change",
-                                    {
-                                        bubbles: true
-                                    }
-                                )
-                            );
-                        }
-                    );
-
-
-                    suggestions.appendChild(
-                        item
-                    );
-                }
-
-
-                suggestions.style.display =
-                    "block";
-            };
-
-
-        input.addEventListener(
-            "input",
-            updateSuggestions
-        );
-
-
-        input.addEventListener(
-            "focus",
-            () => {
-
-                if (input.value.trim()) {
-                    updateSuggestions();
-                }
+        const updateSuggestions = () => {
+            const search = input.value.trim().toLowerCase();
+            suggestions.innerHTML = "";
+            if (!search) {
+                suggestions.style.display = "none";
+                return;
             }
-        );
-
-
-        input.addEventListener(
-            "blur",
-            () => {
-
-                setTimeout(
-                    () => {
-
-                        suggestions.style.display =
-                            "none";
-
-                    },
-                    150
-                );
+            const matches = this.rhythms.filter(rhythm => rhythm.label.toLowerCase().includes(search)).slice(0, 30);
+            if (matches.length === 0) {
+                suggestions.style.display = "none";
+                return;
             }
-        );
 
+            for (const rhythm of matches) {
+
+                const item = document.createElement("div");
+
+                item.className = "rhythm-suggestion";
+
+                item.textContent = rhythm.label;
+
+                item.addEventListener("mousedown", event => {
+                    event.preventDefault();
+                    input.value = rhythm.value;
+                    suggestions.style.display = "none";
+                    input.dispatchEvent(new Event("change", {
+                            bubbles: true
+                        }));
+                });
+                suggestions.appendChild(item);
+            }
+            suggestions.style.display = "block";
+        };
+
+        input.addEventListener("input", updateSuggestions);
+
+        input.addEventListener("focus", () => {
+            if (input.value.trim()) {
+                updateSuggestions();
+            }
+        });
+
+        input.addEventListener("blur", () => {
+            setTimeout(() => {
+                suggestions.style.display = "none";
+            }, 150);
+        });
 
         return {
 
             container:
-                container,
-
+            container, 
             input:
-                input
+            input
         };
     }
 
-
-    /*
-     * Änderungen melden
-     */
-
-    onChange(callback) {
-
-        this.onChanged =
-            callback;
+    addElement(name) {
+        try{
+            console.log("addElement");
+            this.song.addElement(name);
+            this.refresh();
+            this.focusLastNewChordInput();
+        }catch(ex){
+            this.focusLastNewChordInput();
+            this.ui.messageBox.show(messageDefinition.INVALID_CHORD_INPUT)
+                .then(() => {this.focusLastNewChordInput();});
+        }
     }
 
+    /* Methode zum Fokussieren
+     *
+     */
+    focusChordInput(position) {
+
+        const inputs = Array.from(this.container.querySelectorAll(".chord-input"));
+
+        if (position >= 0 &&
+            position < inputs.length) {
+
+            inputs[position].focus();
+            inputs[position].select();
+        }
+    }
+
+    /* Methode zum Fokussieren
+     *
+     */
+    focusLastNewChordInput() {
+
+        const input = this.container.querySelector(".chord-new-input");
+
+        if (input) {
+            input.focus();
+            input.select();
+        }
+    }
 
     /*
-     * Neues Element (Chord oder Songpart)  melden
+     * Chord ändern
      */
-    onAddElement(callback) {
-        this.onAdd = callback;
+    changeChord(change) {
+
+        console.log("changeChord");
+        let structureChanged = false;
+
+        if (change.name.trim() === "") {
+            try{
+                this.song.removeChord(change.bar, change.position);
+                structureChanged = true;
+            }
+            catch (error) {
+                console.log(error);
+                this.ui.messageBox.show("Error", error.message).then(() => {this.refresh()});
+            }
+        } else if (change.name.startsWith(">")||change.name.endsWith(">")){
+            this.song.moveChord(change.bar,change.position,1);
+            structureChanged = true;
+        } else if (change.name.startsWith("<")||change.name.endsWith("<")){
+            this.song.moveChord(change.bar,change.position,-1);
+            structureChanged = true;
+        } else if (change.name.includes(" ")) {
+            this.song.splitChord(change.bar,change.position,change.name);
+            structureChanged = true;
+        } else {
+            try {
+                const newChord = this.song.setChord(change.bar, change.position, change.name);
+                
+                // Handle the change without rebuilding (keep it fast)
+                if (change.field) {
+                    change.field.value = newChord;
+                }
+
+                // Check if there are some linked songParts that should also change
+                if (change.field.dataset.otherFields) {
+                    const others = change.field.dataset.otherFields.split(";");
+                    for (const other of others) {
+                        const otherField = this.readOnlySongFields[other];
+                        if (otherField) {
+                            otherField.value = newChord;
+                        }
+                    }
+                }
+            } catch (error) {
+                console.log(error);
+                this.focusLastNewChordInput();
+                this.ui.messageBox.show(messageDefinition.INVALID_CHORD_INPUT)
+                .then(() => {
+                        if (change.field) {
+                            change.field.value = newChord;
+                            change.field.focus();
+                            change.field.select();
+                        }
+                    });
+                
+            }
+
+        }
+
+        if (structureChanged) {
+            this.refresh();
+        }
+
+        // ToDo: Notify about changed xml, might be unneccessary...
+        //        this.xmlEditor.setXml( //            this.song.getXml()
+        //        );
+
+        // ToDo: SongEditor should get hold about the size field as well!
+        //        this.ui.setSize( //            this.song.getSongSize()
+        //        );
     }
+
+    /*
+     * SongPart ändern
+     */
+
+    changeSongPart(change) {
+        console.log("changeSongPart");
+        try{
+            this.song.setSongPart(change.songPart.bar, change.name, change.rhythmName, change.variation, change.rhythmId, change.timeSignature);
+            this.refresh();
+        }catch(error){
+            console.log(error);
+            this.ui.messageBox.show("Error", error.message).then(() => {this.refresh()});
+        }
+    }
+
 }

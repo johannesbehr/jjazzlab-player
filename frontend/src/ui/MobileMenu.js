@@ -36,10 +36,20 @@ export class MobileMenu {
         `;
 
         button.addEventListener("click", () => {
-            this.toggle();
+            this.onMenuButtonClick();
         });
 
         return button;
+    }
+
+    onMenuButtonClick(){
+        if(this.closeCallback){
+            this.closeCallback();
+            this.closeCallback = undefined;
+            this.close();
+        }else{
+            this.toggle();
+        }
     }
 
 
@@ -134,10 +144,10 @@ export class MobileMenu {
 
         button.addEventListener("click", () => {
 
+            this.close();
             if (this.onMenuAction) {
                 this.onMenuAction(item.action);
             }
-            this.close();
         });
 
 
@@ -146,15 +156,19 @@ export class MobileMenu {
 
 
     toggle() {
-
         this.menu.classList.toggle("open");
         this.menuButton.classList.toggle("open");
     }
 
 
     close() {
-
         this.menu.classList.remove("open");
         this.menuButton.classList.remove("open");
+        this.closeCallback = undefined;
+    }
+    
+    makeCloseButton(callback){
+        this.closeCallback = callback;
+        this.menuButton.classList.add("open");
     }
 }

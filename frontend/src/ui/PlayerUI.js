@@ -1,6 +1,8 @@
+import { MessageBox } from "./MessageBox.js";
+
 export class PlayerUI {
 
-    constructor() {
+    constructor(mobileMenu) {
 
         this.fileInput = document.getElementById("fileInput");
         this.rawXmlButton = document.getElementById("rawXmlButton");
@@ -14,7 +16,12 @@ export class PlayerUI {
         this.sizeInput = document.getElementById("sizeInput");
         this.songEditorContainer = document.getElementById("songEditorContainer");
         this.aboutContainer = document.getElementById("aboutContainer");
+        this.aboutContainerHtml = document.getElementById("aboutContainerHtml");
         this.mainViewConatiner = document.getElementById("mainViewConatiner");
+        this.messageBoxContainer = document.getElementById("messageBoxContainer");
+        
+        this.mobileMenu = mobileMenu;
+        this.messageBox = new MessageBox(messageBoxContainer);
         
         this.closeAbout = document.getElementById("closeAbout");
         this.closeAbout.addEventListener(
@@ -24,6 +31,22 @@ export class PlayerUI {
         
         this.showAbout(true);
     }
+
+    async initialize() {
+        await this.loadAbout();
+    }
+
+    async loadAbout() {
+
+        const response = await fetch("./about.html");
+
+        if (!response.ok) {
+            throw new Error("About-Text konnte nicht geladen werden.");
+        }
+
+        this.aboutContainerHtml.innerHTML = await response.text();
+    }
+
 
 setCookie(name, value, days) {
 
@@ -69,7 +92,11 @@ getCookie(name) {
         
         // Checkbox entsprechend dem Cookie setzen
         this.skipAbout.checked = skipAbout_option;
-        
+        this.mobileMenu.makeCloseButton(
+        () =>{
+            this.hideAbout();
+        }
+        );        
     }
     
     
@@ -80,58 +107,15 @@ getCookie(name) {
         
         this.mainViewConatiner.removeAttribute("style");
         this.aboutContainer.style.display ="none";
-    }
-    
-    
-
-    setTempo(tempo) {
-        this.tempoInput.value = tempo;
-    }
-
-    getTempo() {
-        return Number(this.tempoInput.value);
-    }
-
-    onTempoChanged(callback) {
-        this.tempoInput.addEventListener(
-            "change",
-            () => {
-
-                callback(
-                    this.getTempo()
-                );
-            }
-        );
-    }
-
-    setSize(size) {
-        this.sizeInput.value = size;
-    }
-
-    getSize() {
-        return Number(this.sizeInput.value);
-    }
-
-    onSizeChanged(callback) {
-        this.sizeInput.addEventListener(
-            "change",
-            () => {
-
-                callback(
-                    this.getSize()
-                );
-            }
-        );
+        
+        // Sicher stellen dass das Menü wieder regulär funktioniert
+        this.mobileMenu.close();
     }
 
     setStatus(text) {
         this.status.textContent = text;
     }
 
-    setSongName(name) {
-        this.songName.textContent =
-            name || "–";
-    }
 
     setPlayEnabled(enabled) {
         this.playButton.disabled = !enabled;

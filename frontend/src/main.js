@@ -9,39 +9,21 @@ import { SongEditor } from "./ui/SongEditor.js";
 import { MobileMenu } from "./ui/MobileMenu.js";
 import { menuDefinition } from "./menuDefinition.js";
 
-const api =
-    new JJazzLabApi(
-        "/java/jjazzlab/api"
-    );
 
-const mobileMenuContainer =
-    document.getElementById("mobileMenu");
+const api = new JJazzLabApi("/java/jjazzlab/api");
 
-const soundFontStatus =
-    document.getElementById(
-        "soundFontStatusText"
-    );
+const mobileMenuContainer = document.getElementById("mobileMenu");
+const soundFontStatus = document.getElementById("soundFontStatusText");
+const soundFontProgress = document.getElementById("soundFontProgress");
+const soundFontCache = new SoundFontCache();
 
-const soundFontProgress =
-    document.getElementById(
-        "soundFontProgress"
-    );
-
-const soundFontCache =
-    new SoundFontCache();
-
-const soundFont =
-    await soundFontCache.getOrFetch(
+const soundFont = await soundFontCache.getOrFetch(
         "JJazzLab.sf3.v1",
         "./soundfonts/JJazzlab.sf3",
         //"./soundfonts/soundfont_big.sf2",
         (percent, message) => {
-
-            soundFontStatus.textContent =
-                message;
-
-            soundFontProgress.style.width =
-                `${percent}%`;
+            soundFontStatus.textContent = message;
+            soundFontProgress.style.width = `${percent}%`;
         }
     );
     
@@ -50,38 +32,13 @@ const soundFont =
     ).style.display = "none";
 
 
-const audioPlayer =
-    new AudioPlayer(
-        "./lib/spessasynth_processor.min.js",
-        soundFont    
-    );
+const audioPlayer = new AudioPlayer( "./lib/spessasynth_processor.min.js", soundFont);
+const song = new SongModel();
+const mobileMenu = new MobileMenu(mobileMenuContainer, menuDefinition, onMenuAction);
+const ui = new PlayerUI(mobileMenu);
+const xmlEditor = new XmlEditor( ui.rawXmlContainer, ui.rawXml, ui.rawXmlButton, ui.fileInput);
+const songEditor = new SongEditor(ui);
 
-const song =
-    new SongModel();
-
-
-const ui =
-    new PlayerUI();
-
-const mobileMenu =
-    new MobileMenu(
-        mobileMenuContainer,
-        menuDefinition,
-        onMenuAction
-    );
-
-const xmlEditor =
-    new XmlEditor(
-        ui.rawXmlContainer,
-        ui.rawXml,
-        ui.rawXmlButton,
-        ui.fileInput
-    );
-
-const songEditor =
-    new SongEditor(
-        ui.songEditorContainer
-    );
 
 const application =
     new PlayerApplication(

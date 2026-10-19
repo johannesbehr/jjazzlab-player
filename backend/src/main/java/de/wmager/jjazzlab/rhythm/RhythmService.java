@@ -26,6 +26,68 @@ public class RhythmService {
         return database.getRhythms();
     }
 
+	/**
+     * Returns all rhythms available in the JJazzLab RhythmDatabase as DTO
+     */
+    public List<RhythmDto> getRhythmDtos() {
+
+        RhythmDatabase database =
+                JJazzLabRuntime.getRhythmDatabase();
+
+        return database.getRhythms()
+                .stream()
+                .map(this::toDto)
+                .toList();
+    }
+
+    /**
+     * Converts RhythmInfo into the API DTO.
+     */
+    private RhythmDto toDto(
+            RhythmInfo rhythm) {
+
+        String name =
+                rhythm.name();
+
+        String label =
+                name;
+
+        int dot =
+                name.indexOf('.');
+
+        if (dot >= 0) {
+            label =
+                    name.substring(
+                            0,
+                            dot
+                    );
+        }
+
+        String timeSignature = formatTimeSignature(rhythm.timeSignature().toString());
+
+        return new RhythmDto(
+                name,
+                label,
+                rhythm.rhythmUniqueId(),
+                timeSignature
+        );
+    }
+
+	private String formatTimeSignature(String timeSignature) {
+
+		return switch (timeSignature) {
+
+			case "4/4" -> "FOUR_FOUR" ;
+			case "3/4" -> "THREE_FOUR";
+			case "2/4" -> "TWO_FOUR";
+			case "5/4" -> "FIVE_EIGHT";
+			case "6/4" -> "SIX_FOUR";
+			case "7/4" -> "SEVEN_FOUR";
+			case "6/8" -> "SIX_EIGHT";
+			case "12/8" -> "TWELVE_EIGHT";
+			default ->timeSignature;
+		};
+	}
 
     /**
      * Returns the RhythmInfo for the specified rhythm id.

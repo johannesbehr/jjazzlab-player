@@ -1,6 +1,8 @@
 package de.wmager.jjazzlab.web;
 
 import de.wmager.jjazzlab.rhythm.RhythmService;
+import de.wmager.jjazzlab.rhythm.RhythmDto;
+
 import org.jjazz.rhythmdatabase.api.UnavailableRhythmException;
 
 import jakarta.servlet.ServletException;
@@ -109,41 +111,44 @@ public class RhythmServlet extends HttpServlet {
     /**
      * Gibt alle verfügbaren Rhythmen als JSON zurück.
      */
-    private void writeRhythms(
-            HttpServletResponse response)
-            throws IOException {
+ private void writeRhythms(
+        HttpServletResponse response)
+        throws IOException {
 
-        response.getWriter().print("[");
+    response.getWriter().print("[");
 
-        boolean first = true;
+    boolean first = true;
 
-        for (
-            var rhythm
-            : rhythmService.getRhythms()
-        ) {
+    for (
+        RhythmDto rhythm
+        : rhythmService.getRhythmDtos()
+    ) {
 
-            if (!first) {
-                response.getWriter().print(",");
-            }
-
-            first = false;
-
-            response.getWriter().printf(
-                    "{\"value\":\"%s\",\"label\":\"%s\",\"id\":\"%s\"}",
-                    escapeJson(
-                            rhythm.name()
-                    ),
-                    escapeJson(
-                            rhythm.name()
-                    ),
-                    escapeJson(
-                            rhythm.rhythmUniqueId()
-                    )
-            );
+        if (!first) {
+            response.getWriter().print(",");
         }
 
-        response.getWriter().print("]");
+        first = false;
+
+        response.getWriter().printf(
+                "{\"value\":\"%s\",\"label\":\"%s\",\"id\":\"%s\",\"timeSignature\":\"%s\"}",
+                escapeJson(
+                        rhythm.value()
+                ),
+                escapeJson(
+                        rhythm.label()
+                ),
+                escapeJson(
+                        rhythm.id()
+                ),
+                escapeJson(
+                        rhythm.timeSignature()
+                )
+        );
     }
+
+    response.getWriter().print("]");
+}
 
 
     /**

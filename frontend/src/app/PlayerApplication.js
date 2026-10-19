@@ -15,198 +15,37 @@ export class PlayerApplication {
         this.ui = ui;
         this.xmlEditor = xmlEditor;
         this.songEditor = songEditor;
+        this.songEditor.setSong(song);
     }
 
 
     async initialize() {
 
         this.xmlEditor.initialize();
-
-        this.xmlEditor.onChange(
-            xml => this.song.setXml(xml)
-        );
-
+        this.xmlEditor.onChange(xml => this.song.setXml(xml));
 
         await this.songEditor.initialize();
+        //this.songEditor.onChange(change => this.onSongEditorChange(change));
 
-        this.songEditor.onChange(
-            change => this.onSongEditorChange(change)
-        );
-
-        this.songEditor.onAddElement(
-            name => this.addElement(name)
-        );
-
-        this.ui.onPlay(
-            () => this.play()
-        );
-
-
-        this.ui.onStop(
-            () => this.stop()
-        );
-
-
-        this.ui.onTempoChanged(
-            tempo => {
-
-                this.song.setTempo(tempo);
-
-                this.xmlEditor.setXml(
-                    this.song.getXml()
-                );
-
-                this.xmlEditor.setModified(true);
-            }
-        );
-
-
-        this.ui.onSizeChanged(
-            size => {
-
-                this.song.setSongSize(size);
-
-                this.xmlEditor.setXml(
-                    this.song.getXml()
-                );
-
-                this.xmlEditor.setModified(true);
-            }
-        );
-
+        await this.ui.initialize();
+        this.ui.onPlay(() => this.play());
+        this.ui.onStop(() => this.stop());
 
         this.start();
     }
-
-
-    /*
-     * Änderungen aus dem SongEditor
-     */
-
-    onSongEditorChange(change) {
-
-        switch (change.type) {
-
-            case "chord":
-                this.changeChord(change);
-                break;
-
-            case "songPart":
-                this.changeSongPart(change);
-                break;
-
-            default:
-                console.warn(
-                    "Unbekannter SongEditor-Typ:",
-                    change.type
-                );
-        }
-    }
-
+   
 
     /*
      * SongEditor aktualisieren
      */
-
     refreshSongEditor() {
-
-        this.songEditor.setTimeline(
-            this.song.getTimeline()
-        );
+        this.songEditor.refresh();        
+       // this.songEditor.setTimeline(
+       //     this.song.getTimeline()
+       // );
     }
 
-
-    /*
-     * Chord ändern
-     */
-
-    changeChord(change) {
-
-        if (change.name.trim() === "") {
-
-            this.song.removeChord(
-                change.bar,
-                change.position
-            );
-
-        } else if (change.name.includes(" ")) {
-
-            this.song.splitChord(
-                change.bar,
-                change.position,
-                change.name
-            );
-
-        } else {
-
-            this.song.setChord(
-                change.bar,
-                change.position,
-                change.name
-            );
-        }
-
-
-        this.refreshSongEditor();
-
-
-        this.xmlEditor.setXml(
-            this.song.getXml()
-        );
-
-
-        this.ui.setSize(
-            this.song.getSongSize()
-        );
-    }
-
-
-    /*
-     * SongPart ändern
-     */
-
-    changeSongPart(change) {
-
-        this.song.setSongPart(
-            change.songPart.bar,
-            change.name,
-            change.rhythmName,
-            change.variation,
-            change.rhythmId
-        );
-
-
-        this.refreshSongEditor();
-
-
-        this.xmlEditor.setXml(
-            this.song.getXml()
-        );
-    }
-
-
-    /*
-     * Neuen Chord hinzufügen
-     */
-
-    addElement(name) {
-
-        this.song.addElement(name);
-
-
-        this.refreshSongEditor();
-
-
-        this.xmlEditor.setXml(
-            this.song.getXml()
-        );
-
-
-        this.ui.setSize(
-            this.song.getSongSize()
-        );
-    }
-
+   
 
     async start() {
 
@@ -279,23 +118,8 @@ export class PlayerApplication {
             );
 
 
-            this.ui.setTempo(
-                this.song.getTempo()
-            );
-
-
-            this.ui.setSize(
-                this.song.getSongSize()
-            );
-
-
             this.ui.onLoadFile(
                 event => this.loadLocalFile(event)
-            );
-
-
-            this.ui.setSongName(
-                result.song
             );
 
 
@@ -330,52 +154,13 @@ export class PlayerApplication {
             }
 
 
-            const xml =
-                await this.xmlEditor
-                    .readLocalFile(file);
-
-
-            this.song.setXml(
-                xml
-            );
-
-
+            const xml = await this.xmlEditor.readLocalFile(file);
+            this.song.setXml(xml);
             this.refreshSongEditor();
-
-
-            this.xmlEditor.setXml(
-                xml
-            );
-
-            this.xmlEditor.setModified(
-                true
-            );
-
-
-            this.ui.setTempo(
-                this.song.getTempo()
-            );
-
-
-            this.ui.setSize(
-                this.song.getSongSize()
-            );
-
-
-            this.ui.setSongName(
-                file.name
-            );
-
-
-            this.ui.setPlayEnabled(
-                false
-            );
-
-
-            this.ui.setStatus(
-                `${file.name} geladen`
-            );
-
+            this.xmlEditor.setXml(xml);
+            this.xmlEditor.setModified(true);
+            this.ui.setPlayEnabled(false);
+            this.ui.setStatus(`${file.name} geladen`);
 
             this.saveSong();
 
@@ -409,9 +194,9 @@ export class PlayerApplication {
             this.song.markSaved();
 
 
-            this.ui.setSongName(
-                result.song
-            );
+           // this.ui.setSongName(
+           //     result.song
+           // );
 
 
             this.xmlEditor.setModified(
@@ -445,7 +230,7 @@ export class PlayerApplication {
             new Blob(
                 [xml],
                 {
-                    type: "application/xml"
+                    type: "application/octet-stream"
                 }
             );
 
@@ -463,9 +248,7 @@ export class PlayerApplication {
         link.href =
             url;
 
-        link.download =
-            "song.sng";
-
+        link.download = this.song.getName() + ".sng";
 
         document.body.appendChild(
             link
@@ -522,9 +305,8 @@ export class PlayerApplication {
 
             this.showError(error);
 
-            this.ui.setStopEnabled(
-                false
-            );
+            this.ui.setStopEnabled(false);
+            this.ui.setPlayEnabled(true);
         }
     }
 
@@ -550,12 +332,7 @@ export class PlayerApplication {
 
 
     showError(error) {
-
         console.error(error);
-
-
-        this.ui.setStatus(
-            "Fehler: " + error.message
-        );
+        this.ui.messageBox.show("Error", error);
     }
 }
