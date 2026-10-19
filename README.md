@@ -98,7 +98,7 @@ This project is based on the excellent work of the [JJazzLab](https://www.jjazzl
 
 - [JJazzLab GitHub](https://github.com/jjazzboss/JJazzLab)
 - [JJazzLab Website](https://www.jjazzlab.org/)
-- [spessa-synth](https://github.com/spessasus/spessasynth_lib)
+- [spessa-synth GitHub](https://github.com/spessasus/spessasynth_lib)
 
 ---
 
