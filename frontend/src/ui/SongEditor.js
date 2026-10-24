@@ -12,8 +12,12 @@ export class SongEditor {
         this.songName = ui.songName;
         this.focusAfterRefresh = null;
         this.song = null;
+        
+        
         this.readOnlySongFields = null;
-
+        this.newInputFields = null;
+        this.currentField = null;
+        
         /*
          * Rhythmus-Styles vom Server
          */
@@ -27,11 +31,33 @@ export class SongEditor {
     }
 
     refresh() {
+        console.log("Refresh");
+        
         this.setTimeline(this.song.getTimeline());
         this.songName.value = this.song.getName();
         this.sizeInput.value = this.song.getSongSize();
         this.tempoInput.value = this.song.getTempo();
+        
+        this.updateFocus();
 
+    }
+
+    updateFocus(){
+        if(this.currentField){
+            switch(this.currentField.type) {
+            case "NewInputField":
+                // Find next NewInputField
+                const entry = this.newInputFields.find(f=>f.bar>this.currentField.bar);
+                // If found, select it.
+                if(entry){
+                   entry.input.focus();
+                   entry.input.select();
+                } 
+                break;
+            }    
+        }
+        
+        this.currentField = null;
     }
 
     focusChordAfterRefresh(position) {
@@ -60,8 +86,17 @@ export class SongEditor {
     }
 
     setSize(size) {
-        // ToDo: Validate that size is not less than bars in song
-        this.song.setSongSize(size);
+        try{
+            this.song.setSongSize(size);
+            this.refresh();
+        }catch(error){
+            this.ui.messageBox.show("Error", error.message )
+                .then(() => {
+                    this.sizeInput.value = this.song.getSongSize();
+                    this.sizeInput.focus();
+                    this.sizeInput.select();
+                });
+        }
     }
 
     setSongName(name) {
@@ -77,6 +112,7 @@ export class SongEditor {
         let currentRow = null;
 
         this.readOnlySongFields = {};
+        this.newInputFields = [];
 
         // Dict for all refernced input fields
         const baseCordFields = {};
@@ -179,6 +215,8 @@ export class SongEditor {
             }
             this.onInsertElement(change);
         });
+        
+        this.newInputFields.push({input:input, bar:bar});
 
         chordContainer.appendChild(input);
 
@@ -189,8 +227,13 @@ export class SongEditor {
         // Name can be sp or a chord
         const name = change.name.trim();
         if(name != ""){
-            const bar = change.bar;        
+            const bar = change.bar; 
+
+            
             this.song.insertElement(bar, name);
+ 
+            this.currentField = {type:"NewInputField", bar:bar};
+ 
             this.refresh();
         }
     }
@@ -582,7 +625,6 @@ export class SongEditor {
         }
 
         chordContainer.appendChild(beat);
-
         chordContainer.appendChild(input);
 
         /*

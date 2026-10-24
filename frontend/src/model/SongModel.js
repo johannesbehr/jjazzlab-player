@@ -112,6 +112,7 @@ export class SongModel {
     getSections() {
         
         const lastBar = this.getChords().at(-1).bar;
+        const songSize = this.getSongSize();
         
         const sections = this.getSectionElements()
             .map(element => ({
@@ -122,7 +123,16 @@ export class SongModel {
             })).sort((a, b) => a.bar - b.bar);
 
         sections.forEach((section, i) => {
-            section.length = sections[i + 1]? sections[i + 1].bar - section.bar : lastBar - section.bar + 1;
+            if(sections[i + 1]){
+                section.realSize = section.length = sections[i + 1].bar - section.bar;
+                section.isLastSection = false;
+                
+            }else{
+                section.length =  songSize - section.bar;
+                section.realSize = lastBar - section.bar + 1;
+                section.isLastSection = true;
+            }
+            
         });
 
         return sections;
@@ -168,26 +178,6 @@ export class SongModel {
         return null;
     }
 
-/*
-    getChordName(element) {
-        let chordElement = element.querySelector(":scope > spChord");
-        if (!chordElement) return null;
-
-        const reference = chordElement.getAttribute("reference");
-        if (reference) {
-            const match = reference.match(/^\.\.\/\.\.\/(CLI__ChordSymbolImpl\[\d+\]\/spChord)$/);
-            if (!match) return null;
-
-            const index = Number(
-                match[1].match(/\[(\d+)\]/)[1]
-            );
-            const chords = this.getChordElements();
-            chordElement = chords[index - 1]?.querySelector(":scope > spChord");
-            if (!chordElement) return null;
-        }
-
-        return chordElement.getAttribute("spOriginalName")|| chordElement.getAttribute("spName");
-    }*/
     getChordName(element) {
         const chordElement = element.querySelector(":scope > spChord");
         if (!chordElement) {
@@ -503,7 +493,7 @@ export class SongModel {
             return this.addSongPart(undefined, chordName);
         }else{
             const lastSection = this.getSections().find(s=>s.name === lastSongPart.name);
-            const bar = lastSection.bar + lastSection.length;
+            const bar = lastSection.bar + lastSection.realSize;
             return this.insertChordAsNewBar(bar, chordName, shiftElements);            
         }
         
@@ -515,7 +505,16 @@ export class SongModel {
         if (!chord) {
             return;
         }
-        this.setChordPosition(chord, bar, position + beat) 
+        if(position + beat > 3){
+            this.shiftChordsFromBar(bar + 1,1);
+            this.shiftSectionsFromBar(bar + 1,1);
+            this.setChordPosition(chord, bar + 1, 0);
+        }else if(position + beat > 0){
+            this.setChordPosition(chord, bar, position + beat);
+        }
+        
+        this.ensureSongSize();
+        this.updateSongPartData();
         this.updateXml();
     }
 
@@ -629,6 +628,12 @@ export class SongModel {
         if (!chordLeadSheet) {
             return;
         }
+        
+        const minSize = this.getChords().at(-1).bar + 1;
+
+        if(size<minSize){
+            throw new Error("Size can not be less than chord bars in Chord Lead Sheet.");
+        }
 
         const sizeElement = chordLeadSheet.querySelector(":scope > spSize");
         if (!sizeElement) {
@@ -637,6 +642,9 @@ export class SongModel {
 
         const currentSize = Number(sizeElement.textContent);
         sizeElement.textContent = String(size);
+        
+        this.updateSongPartData();
+        this.updateXml();
     }
 
     ensureSongSize(size = undefined) {
@@ -754,6 +762,8 @@ export class SongModel {
 
         const appendAtEnd = startBar === undefined;
         const songParts = this.getSongParts();
+        const sections = this.getSections();
+        const chords = this.getChords();
 
         if (songParts.length === 0) {
             return false;
@@ -764,18 +774,19 @@ export class SongModel {
          */
         let previousSongPart;
         if (appendAtEnd) {
-            const chords = this.getChordElements();
             if (chords.length === 0) {
                 return false;
             }
-            const lastChord = this.getElementPosition(chords[chords.length - 1]);
+            const lastChord = chords.at(-1);
 
             if (!lastChord) {
                 return false;
             }
 
-            startBar = lastChord.bar + 1;
-            previousSongPart = songParts[songParts.length - 1];
+            previousSongPart = songParts.at(-1);
+
+            // Dummy-StartBar value to put it just after last songPart. Will be correktet in update-method
+            startBar = previousSongPart.startBar  + 1;
 
             //if (!this.extendSongByOneBar()) {
             //    return false;
@@ -794,42 +805,46 @@ export class SongModel {
             
         }
 
-        /*
-         * Namen bestimmen.
-         */
-        let name = this.getUniqueSongPartName("New Part");
+        const putInFront = (previousSongPart.startBar == startBar);
+        const name = this.getUniqueSongPartName("New Part");
 
-        /*
-         * Section-Vorlage ermitteln.
-         */
-
-        const sectionTemplate = this.getSectionForSongPart(previousSongPart.element);
-
+        // Use previouseSection as temlate
+        const sectionTemplate = sections.find(s=>s.name == previousSongPart.name)
+        
         if (!sectionTemplate) {
             return false;
         }
+        
+        let sectionStartBar;
+        if(appendAtEnd){
+            sectionStartBar = chords.at(-1).bar + 1;
+        }else if(putInFront){
+            // put new section at the bar of the template (will be shifted later one bar forward)
+            sectionStartBar = sectionTemplate.bar;
+        }else{
+            const offset = startBar - previousSongPart.startBar;
+            sectionStartBar = sectionTemplate.bar + offset;
+        }
 
+
+        // Shift old section one bar ahead if new section was placed before it
         if(previousSongPart.startBar == startBar){
-            this.shiftSectionsFromBar(startBar, 1);
-            this.shiftChordsFromBar(startBar, 1);
+            this.shiftSectionsFromBar(sectionStartBar, 1);
+            this.shiftChordsFromBar(sectionStartBar, 1);
             previousSongPart.element.setAttribute("spStartBarIndex", String(startBar + 1));
         }
  
         /*
-         * Neue Section erzeugen.
+         * Create new section
          */
-
-        const newSection = sectionTemplate.cloneNode(true);
-
+        const newSection = sectionTemplate.element.cloneNode(true);
         newSection.setAttribute("spName", name);
-        newSection.setAttribute("spBarIndex", String(startBar));
-
+        newSection.setAttribute("spBarIndex", String(sectionStartBar));
+        
         /*
          * Neuen SongPart erzeugen.
          */
-
         const newSongPart = previousSongPart.element.cloneNode(true);
-
         newSongPart.setAttribute("spName", name);
         newSongPart.setAttribute("spStartBarIndex", String(startBar));
 
@@ -846,21 +861,15 @@ export class SongModel {
             return false;
         }
 
-       if(previousSongPart.startBar == startBar){
-           this.insertChordAsNewBar(startBar, undefined, false);
+        // If the section is put in front, we need a new chord
+       if(putInFront){
+           this.insertChordAsNewBar(sectionStartBar, undefined, false);
         }
- 
-        /*
-         * Referenzen und SongPart-Daten
-         * aktualisieren.
-         */
-
-        this.updateSongPartSectionReferences();
-
         if(appendAtEnd){
             this.addChord(chordName, false);
         }
 
+        this.updateSongPartSectionReferences();
         this.updateSongPartData();
         this.updateXml();
 
@@ -932,7 +941,7 @@ export class SongModel {
         }
 
         // If section is not used in other songpart, delete section.
-        if(songParts.filter(p=>p.name===songPart.name)==1){
+        if(songParts.filter(p=>p.name===songPart.name).length==1){
             const section = this.getSectionForSongPart(songPart.element);
             if (section) {
                 section.remove();
@@ -942,6 +951,7 @@ export class SongModel {
         //delete songpart
         songPart.element.remove();
 
+        this.updateSongPartSectionReferences();
         this.updateSongPartData();
         this.updateXml();
         return true;
@@ -950,7 +960,7 @@ export class SongModel {
     renameSongPart(startBar, name){
         const songParts = this.getSongParts();
         const songPart = songParts.find(p=>p.startBar===startBar);
-        const sections = this.getSections();
+        let sections = this.getSections();
         
         const oldSection = sections.find(s=>s.name===songPart.name);
         const existingSection = sections.find(s=>s.name===name);
@@ -963,8 +973,9 @@ export class SongModel {
             if (existingSection && !oldSectionUsedMoreThanOnce) {
                 // SongPart was moved to existing section,
                 // old section was only used by this song part
-                // so the old section should be removed
+                // so the old section should be removed (from "sections" as well)
                 oldSection.element.remove();
+                sections = sections.filter(s=>s!=oldSection);
                 if(oldSection.length==undefined){
                     this.removeChords(oldSection.bar);
                 }else{
@@ -973,23 +984,26 @@ export class SongModel {
             } else {
                 if(oldSectionUsedMoreThanOnce){
                     // Create a copy to split the sections up
-                    const cloneSection = oldSection.element.cloneNode(true);
+                    const cloneSectionElement = oldSection.element.cloneNode(true);
                     const chords = this.getChords();
-                    const lastBar = (chords.sort((a, b) => b.bar - a.bar)[0]).bar;
+                    const lastBar = chords.at(-1).bar;
                     const oldSectionEndBar = oldSection.length!=undefined?(oldSection.bar + oldSection.length):lastBar;
                     const sectionChords = chords.filter(c=>c.bar>=oldSection.bar && c.bar <= oldSectionEndBar);
                     const offset = lastBar - oldSection.bar + 1;
                     
                     for(const chord of sectionChords){
-                        const cloneChord = chord.element.cloneNode(true);
-                        this.setChordPosition(cloneChord, chord.bar + offset);                            
-                        chord.element.parentNode.appendChild(cloneChord);
+                        const cloneChordElement = chord.element.cloneNode(true);
+                        this.setChordPosition(cloneChordElement, chord.bar + offset);                            
+                        chord.element.parentNode.appendChild(cloneChordElement);
                     }
-                    cloneSection.setAttribute("spBarIndex", lastBar + 1);
-                    oldSection.element.parentNode.appendChild(cloneSection);                    
+                    cloneSectionElement.setAttribute("spBarIndex", lastBar + 1);
+                    oldSection.element.parentNode.appendChild(cloneSectionElement);                    
+                    // Rename clone section
+                    cloneSectionElement.setAttribute("spName", name.trim());
+                }else{
+                    // Rename old section
+                    oldSection.element.setAttribute("spName", name.trim());
                 }
-                // Rename old section
-                oldSection.element.setAttribute("spName", name.trim());
                     /*
                     if (timeSignature !== undefined &&
                         timeSignature !== "") {
@@ -998,6 +1012,16 @@ export class SongModel {
             }
         }
         
+        // If the songpart was bound to the last section, 
+        // we should make shure that it has no empty bars, 
+        // by setting the size to the minimum. 
+        if(existingSection == sections.at(-1)){
+            const chords = this.getChords();
+            const lastBar = chords.at(-1).bar;
+            this.setSongSize(lastBar + 1);
+        }
+        
+        this.ensureSongSize();
         this.updateSongPartData();
         this.updateSongPartSectionReferences();
 
@@ -1384,7 +1408,8 @@ export class SongModel {
     }
 
     updateSongPartData() {
-        const sections = this.getSectionsWithLength();
+                
+        const sections = this.getSections();
         const songParts = this.getSongPartElements()
             .sort( (a, b) =>
                 Number( a.getAttribute( "spStartBarIndex")) -
@@ -1392,8 +1417,8 @@ export class SongModel {
         let currentBar = 0;
         for (const songPart of songParts) {
             const name = songPart.getAttribute( "spName");
-            const section = sections.find( section =>
-                    section.name === name);
+            const section = sections.find( s =>
+                    s.name === name);
             if (!section) {
                 console.warn( "Keine Section für SongPart:", name);
                 continue;
@@ -1407,31 +1432,4 @@ export class SongModel {
         return currentBar;
     }
 
-    getSectionsWithLength() {
-        const sections = this.getSections().sort( (a, b) => a.bar - b.bar);
-        const chords = this.getChords().sort( (a, b) => a.bar - b.bar);
-        for (let i = 0; i < sections.length; i++) {
-            const section = sections[i];
-            const nextSection = sections[i + 1];
-            if (nextSection) {
-                section.length = nextSection.bar - section.bar;
-                continue;
-            }
-
-            /*
-             * Letzte Section:
-             * Länge anhand des letzten Akkords.
-             */
-            const sectionChords = chords.filter( chord => chord.bar >= section.bar);
-            if (sectionChords.length === 0) {
-                section.length = 0;
-                continue;
-            }
-
-            const lastChord = sectionChords[sectionChords.length - 1];
-            section.length = lastChord.bar - section.bar + 1;
-        }
-
-        return sections;
-    }
 }
